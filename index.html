@@ -190,17 +190,28 @@
         }
 
         window.onload = function() {
+            // 1. 初始化主题
             const savedTheme = localStorage.getItem('agency_theme');
             if (savedTheme === 'dark') { toggleTheme(); }
 
+            // 2. 初始化昵称
             const savedName = localStorage.getItem('agency_nick');
             if (savedName && savedName.trim() !== "") {
                 myName = savedName.trim();
                 document.getElementById('username').value = myName;
             }
 
+            // 3. 核心修复：确保渲染逻辑执行时，Localstorage 已确实读取
             syncHistoryFromStorage();
-            renderAllLogs();
+            
+            // 如果数据长度大于0，立刻渲染；如果为0，做一个小延迟重试
+            if (activeHistory.length > 0) {
+                renderAllLogs();
+            } else {
+                // 等待 100ms 确保 DOM 和 Storage 彻底就绪后再渲染
+                setTimeout(renderAllLogs, 100);
+            }
+
             initSupabaseSync();
         };
 
