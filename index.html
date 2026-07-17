@@ -5,59 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AgencyOS - Triangle Agency Dice Pool</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Supabase JS 客户端 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-        }
+        tailwind.config = { darkMode: 'class' }
     </script>
     <style>
-        .agency-bg-light {
-            background-color: #faf9f6;
-            background-image: linear-gradient(rgba(220, 38, 38, 0.02) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(220, 38, 38, 0.02) 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
-        .dark .agency-bg-dark {
-            background-color: #0c0505;
-            background-image: linear-gradient(rgba(220, 38, 38, 0.03) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(220, 38, 38, 0.03) 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
-        .triangle-dice-red {
-            width: 0;
-            height: 0;
-            border-left: 22px solid transparent;
-            border-right: 22px solid transparent;
-            border-bottom: 38px solid #dc2626;
-            position: relative;
-            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
-            transition: transform 0.2s ease;
-        }
-        .triangle-dice-blue {
-            width: 0;
-            height: 0;
-            border-left: 22px solid transparent;
-            border-right: 22px solid transparent;
-            border-bottom: 38px solid #2563eb;
-            position: relative;
-            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
-            transition: transform 0.2s ease;
-        }
-        .triangle-dice-red:hover, .triangle-dice-blue:hover {
-            transform: scale(1.1);
-        }
-        .triangle-text {
-            position: absolute;
-            top: 14px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ffffff;
-            font-weight: 900;
-            font-size: 16px;
-            line-height: 1;
-        }
+        .agency-bg-light { background-color: #faf9f6; background-image: linear-gradient(rgba(220, 38, 38, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(220, 38, 38, 0.02) 1px, transparent 1px); background-size: 20px 20px; }
+        .dark .agency-bg-dark { background-color: #0c0505; background-image: linear-gradient(rgba(220, 38, 38, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(220, 38, 38, 0.03) 1px, transparent 1px); background-size: 20px 20px; }
+        .triangle-dice-red { width: 0; height: 0; border-left: 22px solid transparent; border-right: 22px solid transparent; border-bottom: 38px solid #dc2626; position: relative; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2)); transition: transform 0.2s ease; }
+        .triangle-dice-blue { width: 0; height: 0; border-left: 22px solid transparent; border-right: 22px solid transparent; border-bottom: 38px solid #2563eb; position: relative; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2)); transition: transform 0.2s ease; }
+        .triangle-dice-red:hover, .triangle-dice-blue:hover { transform: scale(1.1); }
+        .triangle-text { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); color: #ffffff; font-weight: 900; font-size: 16px; line-height: 1; }
+        .burnout-input { transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+        .burnout-input:focus { box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.3); border-color: #dc2626; outline: none; }
     </style>
 </head>
 <body id="main-body" class="agency-bg-light text-neutral-900 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350">
@@ -66,101 +26,68 @@
         <div class="flex items-center gap-3">
             <div class="bg-red-600 text-white dark:text-black px-2.5 py-1 font-black tracking-tighter text-sm rounded-sm uppercase">▲ AgencyOS</div>
             <h1 class="text-md font-black tracking-widest text-neutral-900 dark:text-red-500">PUBLIC TERMINAL // 公共特工骰池</h1>
-            <button onclick="toggleTheme()" id="theme-btn" class="ml-2 text-xs bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 text-neutral-700 dark:text-neutral-300 px-2.5 py-1 rounded border border-neutral-300 dark:border-neutral-800 transition flex items-center gap-1.5">
-                ☀ 亮色特工终端
-            </button>
+            <button onclick="toggleTheme()" id="theme-btn" class="ml-2 text-xs bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 text-neutral-700 dark:text-neutral-300 px-2.5 py-1 rounded border border-neutral-300 dark:border-neutral-800 transition">☀ 亮色特工终端</button>
         </div>
-        <div id="status-tag" class="text-xs px-2 py-1 bg-amber-500/10 text-amber-600 border border-amber-500/30 rounded font-bold uppercase">
-            CONNECTING // 网关连接中
-        </div>
+        <div id="status-tag" class="text-xs px-2 py-1 bg-amber-500/10 text-amber-600 border border-amber-500/30 rounded font-bold uppercase">CONNECTING // 网关连接中</div>
     </header>
 
     <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6">
-        
-        <!-- 左侧控制台 -->
         <div class="w-full md:w-1/2 flex flex-col gap-6">
             <div class="bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950/60 rounded p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-none flex flex-col justify-between transition-colors">
                 <div>
                     <h2 class="text-sm font-black mb-4 text-neutral-950 dark:text-red-500 border-b-2 border-neutral-900 dark:border-red-950 pb-2 tracking-wider">▲ 特工控制台 / AGENT CONSOLE</h2>
-                    
                     <div class="mb-5">
                         <label class="block text-xs font-black text-neutral-500 dark:text-neutral-400 mb-1.5">特工代号 / CODE NAME</label>
-                        <input type="text" id="username" placeholder="未命名特工 (UNNAMED)" onchange="saveName()" class="w-full bg-neutral-50 dark:bg-black border border-neutral-300 dark:border-neutral-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-650 dark:focus:border-red-600 text-neutral-900 dark:text-red-200 transition">
+                        <input type="text" id="username" placeholder="未命名特工 (UNNAMED)" onchange="saveName()" class="w-full bg-neutral-50 dark:bg-black border border-neutral-300 dark:border-neutral-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-600 text-neutral-900 dark:text-red-200 transition">
                     </div>
-
                     <div class="mb-5">
                         <label class="block text-xs font-black text-neutral-500 dark:text-neutral-400 mb-2">掷骰类型 / DICE ROLL TYPE</label>
                         <div class="grid grid-cols-2 gap-3">
                             <label class="flex items-center justify-center gap-2.5 p-3 bg-red-50/50 dark:bg-red-950/10 border-2 border-red-500 rounded cursor-pointer transition hover:bg-red-100/50 dark:hover:bg-red-950/20">
-                                <input type="radio" name="roll-type" value="reality" checked class="w-4 h-4 accent-red-600">
-                                <span class="text-xs font-black text-red-750 dark:text-red-400">现实改写</span>
+                                <input type="radio" name="roll-type" value="reality" checked class="w-4 h-4 accent-red-600"><span class="text-xs font-black text-red-750 dark:text-red-400">现实改写</span>
                             </label>
                             <label class="flex items-center justify-center gap-2.5 p-3 bg-blue-50/50 dark:bg-blue-950/10 border-2 border-blue-500 rounded cursor-pointer transition hover:bg-blue-100/50 dark:hover:bg-blue-950/20">
-                                <input type="radio" name="roll-type" value="anomaly" class="w-4 h-4 accent-blue-600">
-                                <span class="text-xs font-black text-blue-750 dark:text-blue-400">异常能力</span>
+                                <input type="radio" name="roll-type" value="anomaly" class="w-4 h-4 accent-blue-600"><span class="text-xs font-black text-blue-750 dark:text-blue-400">异常能力</span>
                             </label>
                         </div>
                     </div>
-
-                    <div class="mb-6 bg-neutral-50 dark:bg-black p-4 rounded border border-neutral-250 dark:border-neutral-900 transition-colors">
+                    <div class="mb-6 bg-neutral-50 dark:bg-black p-4 rounded border border-neutral-250 dark:border-neutral-900">
                         <label class="block text-xs text-neutral-600 dark:text-neutral-400 font-black mb-2">当前燃尽值 / BURNOUT VALUE</label>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <input type="number" id="burnout-value" min="0" max="6" value="1" class="w-20 bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950 text-center text-lg font-black text-red-650 dark:text-red-500 rounded p-2 focus:outline-none focus:border-red-650">
-                            <span class="text-xs text-neutral-500 dark:text-neutral-400">（判定成功标准：掷出的 “3” 数量大于或等于该数值 + 1）</span>
+                        <div class="flex items-center gap-3">
+                            <input type="number" id="burnout-value" min="0" max="6" value="1" class="burnout-input w-20 bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-center text-lg font-black text-red-650 dark:text-red-500 rounded p-2">
+                            <span class="text-[10px] text-neutral-500">判定成功：掷出 “3” 数量 ≥ 燃尽值 + 1</span>
                         </div>
                     </div>
-
-                    <button onclick="rollAgencyDice()" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-5 rounded text-lg tracking-widest transition shadow-md border-b-4 border-red-800 active:border-b-0 uppercase">
-                        ▲ 特工掷骰 (6D4)
-                    </button>
+                    <button onclick="rollAgencyDice()" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-5 rounded text-lg tracking-widest transition shadow-md border-b-4 border-red-800 active:border-b-0 uppercase">▲ 特工掷骰 (6D4)</button>
                 </div>
-
                 <div class="space-y-4 mt-6">
                     <div class="space-y-3 bg-neutral-50 dark:bg-black p-4 rounded border border-neutral-250 dark:border-neutral-900">
                         <label class="flex items-center gap-2.5 cursor-pointer text-xs text-neutral-600 dark:text-neutral-400 font-bold">
-                            <input type="checkbox" id="is-secret" class="w-4 h-4 rounded accent-red-600 bg-neutral-200 dark:bg-neutral-900 border-neutral-300 dark:border-neutral-800">
-                            <span>暗骰：结果仅向自己公开</span>
+                            <input type="checkbox" id="is-secret" class="w-4 h-4 rounded accent-red-600 bg-neutral-200 dark:bg-neutral-900 border-neutral-300"> <span>暗骰：结果仅向自己公开</span>
                         </label>
                     </div>
-
-                    <div class="border-t border-neutral-300 dark:border-red-950 pt-4 space-y-3">
-                        <button onclick="clearAllLogs()" class="w-full bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 border border-neutral-300 dark:border-red-950 text-neutral-600 dark:text-neutral-400 py-2 rounded text-xs font-bold transition">
-                            格式化本地终端记录
-                        </button>
-                        <!-- 新增：清除缓存并重连 -->
-                        <button onclick="clearCacheAndReconnect()" class="w-full bg-red-600/10 hover:bg-red-600/20 border border-red-500/50 text-red-600 dark:text-red-400 py-2 rounded text-xs font-bold transition flex items-center justify-center gap-2">
-                            <span>⚠ 清除缓存并重连</span>
-                        </button>
-                    </div>
+                    <button onclick="clearCacheAndReconnect()" class="w-full bg-red-600/10 hover:bg-red-600/20 border border-red-500/50 text-red-600 dark:text-red-400 py-3 rounded text-xs font-bold transition flex items-center justify-center gap-2">
+                        <span>⚠ 清除缓存并重连</span>
+                    </button>
                 </div>
             </div>
         </div>
-
-        <!-- 右侧日志区 -->
-        <div class="w-full md:w-1/2 flex flex-col bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950/60 rounded p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-none h-[550px] md:h-auto transition-colors">
+        <div class="w-full md:w-1/2 flex flex-col bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950/60 rounded p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-none h-[550px] md:h-auto">
             <div class="flex justify-between items-center mb-4 border-b-2 border-neutral-900 dark:border-red-950 pb-2">
-                <h2 class="text-sm font-black text-neutral-950 dark:text-red-500 tracking-wider">
-                    特工日志 / AGENCY ACTIVITY LOG
-                </h2>
+                <h2 class="text-sm font-black text-neutral-950 dark:text-red-500 tracking-wider">特工日志 / AGENCY ACTIVITY LOG</h2>
             </div>
-            <div id="log-container" class="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-red-950">
+            <div id="log-container" class="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin">
                 <div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>
             </div>
         </div>
     </main>
 
-    <footer class="border-t border-neutral-300 dark:border-neutral-950 bg-neutral-50 dark:bg-black text-center py-4 text-[10px] text-neutral-500 dark:text-neutral-700 uppercase tracking-widest transition-colors">
-        AgencyOS v4.20 // Supabase Data Synchronization Engine // Sync Active
-    </footer>
-
     <script>
         const SUPABASE_URL = "https://egtudzuaahkknlvfzgrb.supabase.co";
         const SUPABASE_ANON_KEY = "sb_publishable_beFak4osOEoXcoK668rFpA_t6Vki5Ol";
-
         let supabaseClient = null;
         let myName = "未命名特工";
         let isDarkMode = false;
-        
         const STORAGE_KEY = "agency_dice_history_v20"; 
         let activeHistory = [];
 
@@ -168,132 +95,41 @@
             const body = document.getElementById('main-body');
             const themeBtn = document.getElementById('theme-btn');
             isDarkMode = !isDarkMode;
-            if (isDarkMode) {
-                document.documentElement.classList.add('dark');
-                body.className = "agency-bg-dark text-gray-100 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350 dark";
-                themeBtn.innerText = "🌙 护眼暗色终端";
-                localStorage.setItem('agency_theme', 'dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-                body.className = "agency-bg-light text-neutral-900 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350";
-                themeBtn.innerText = "☀ 亮色特工终端";
-                localStorage.setItem('agency_theme', 'light');
-            }
+            document.documentElement.classList.toggle('dark');
+            body.className = isDarkMode ? "agency-bg-dark text-gray-100 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350 dark" : "agency-bg-light text-neutral-900 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350";
+            themeBtn.innerText = isDarkMode ? "🌙 护眼暗色终端" : "☀ 亮色特工终端";
+            localStorage.setItem('agency_theme', isDarkMode ? 'dark' : 'light');
         }
 
-        function syncHistoryFromStorage() {
-            const savedHistory = localStorage.getItem(STORAGE_KEY);
-            if (savedHistory) {
-                try { activeHistory = JSON.parse(savedHistory); } catch(e) { activeHistory = []; }
-            } else {
-                activeHistory = [];
-            }
-        }
-
-        window.onload = function() {
-            const savedTheme = localStorage.getItem('agency_theme');
-            if (savedTheme === 'dark') { toggleTheme(); }
+        window.onload = () => {
+            if (localStorage.getItem('agency_theme') === 'dark') toggleTheme();
             const savedName = localStorage.getItem('agency_nick');
-            if (savedName && savedName.trim() !== "") {
-                myName = savedName.trim();
-                document.getElementById('username').value = myName;
-            }
+            if (savedName) { myName = savedName; document.getElementById('username').value = myName; }
             syncHistoryFromStorage();
             renderAllLogs();
             initSupabaseSync();
         };
 
-        function saveName() {
-            const nameInput = document.getElementById('username').value.trim();
-            myName = nameInput || "未命名特工";
-            localStorage.setItem('agency_nick', myName);
-            renderAllLogs();
-        }
-
         function initSupabaseSync() {
             try {
                 supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                supabaseClient
-                    .channel('public:agency_rolls')
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agency_rolls' }, payload => {
-                        if (payload.new && payload.new.payload) {
-                            handleIncomingRoll(payload.new.payload);
-                        }
-                    })
-                    .subscribe((status) => {
-                        const statusTag = document.getElementById('status-tag');
-                        if (status === 'SUBSCRIBED') {
-                            statusTag.innerText = "ONLINE // 中枢已同步";
-                            statusTag.className = "text-xs px-2 py-1 bg-green-500/10 text-green-600 border border-green-500/30 rounded font-bold uppercase";
-                            appendSystemLog("安全接入 Supabase 广播管道，多端同步已就绪。");
-                        }
-                    });
-            } catch (e) {
-                console.error(e);
-                appendSystemLog("Supabase 网关初始化失败，请检查配置凭证。");
-            }
+                supabaseClient.channel('public:agency_rolls').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agency_rolls' }, payload => {
+                    if (payload.new?.payload) handleIncomingRoll(payload.new.payload);
+                }).subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        document.getElementById('status-tag').innerText = "ONLINE // 网关已就绪";
+                        appendSystemLog("安全接入网关，多端同步已就绪。");
+                    }
+                });
+            } catch (e) { appendSystemLog("网关初始化失败。"); }
         }
 
-        async function broadcastRoll(rollData) {
-            if (!supabaseClient) return;
-            const { error } = await supabaseClient
-                .from('agency_rolls')
-                .insert([{ id: rollData.id, payload: rollData }]);
-            if (error) console.error("广播失败:", error);
-        }
-
-        function rollAgencyDice() {
-            const burnout = parseInt(document.getElementById('burnout-value').value) || 0;
-            const rollType = document.querySelector('input[name="roll-type"]:checked').value;
-            const rolls = [];
-            let countOfThree = 0;
-            for (let i = 0; i < 6; i++) {
-                const val = Math.floor(Math.random() * 4) + 1;
-                rolls.push(val);
-                if (val === 3) countOfThree++;
-            }
-            const isThreefold = (countOfThree === 3);
-            const netResult = countOfThree - burnout;
-            const isSuccess = isThreefold || (netResult >= 1);
-            const rollData = {
-                id: "roll_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
-                sender: myName,
-                rolls: rolls,
-                rollType: rollType, 
-                countOfThree: countOfThree,
-                burnout: burnout,
-                netResult: netResult,
-                isThreefold: isThreefold,
-                isSuccess: isSuccess,
-                isSecret: document.getElementById('is-secret').checked,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-            };
-            pushToLocalHistory(rollData);
-            if (!rollData.isSecret) {
-                broadcastRoll(rollData);
-            }
-        }
-
-        function handleIncomingRoll(data) {
-            if (data.isSecret) return;
-            if (data.sender === myName) return; 
-            pushToLocalHistory(data);
-        }
-
-        function pushToLocalHistory(data) {
-            syncHistoryFromStorage();
-            if (!activeHistory.some(item => item.id === data.id)) {
-                activeHistory.unshift(data);
-                if (activeHistory.length > 40) activeHistory.pop();
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
-                renderAllLogs();
-            }
-        }
+        function saveName() { localStorage.setItem('agency_nick', document.getElementById('username').value); }
+        function syncHistoryFromStorage() { const h = localStorage.getItem(STORAGE_KEY); activeHistory = h ? JSON.parse(h) : []; }
 
         function renderAllLogs() {
             const container = document.getElementById('log-container');
             if (!container) return;
-            syncHistoryFromStorage();
             if (activeHistory.length === 0) {
                 container.innerHTML = '<div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>';
                 return;
@@ -309,92 +145,44 @@
         function createRollElement(data, isSelf) {
             const div = document.createElement('div');
             const isRed = (data.rollType === 'reality');
-            let cardStyle = "";
-            let diceClass = "";
-            if (isRed) {
-                cardStyle = data.isSuccess 
-                    ? "border-red-400/80 bg-red-50/40 dark:border-red-950/50 dark:bg-red-950/10" 
-                    : "border-neutral-300 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-950/50";
-                if (data.isThreefold) {
-                    cardStyle = "border-red-600 bg-red-50/90 dark:border-red-500/50 dark:bg-red-950/30 shadow-[4px_4px_0px_0px_#dc2626] dark:shadow-none";
-                }
-                diceClass = "triangle-dice-red";
-            } else {
-                cardStyle = data.isSuccess 
-                    ? "border-blue-400/80 bg-blue-50/40 dark:border-blue-950/50 dark:bg-blue-950/10" 
-                    : "border-neutral-300 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-950/50";
-                if (data.isThreefold) {
-                    cardStyle = "border-blue-600 bg-blue-50/90 dark:border-blue-500/50 dark:bg-blue-950/30 shadow-[4px_4px_0px_0px_#2563eb] dark:shadow-none";
-                }
-                diceClass = "triangle-dice-blue";
-            }
-            div.className = `p-4 rounded border-2 ${cardStyle} flex flex-col gap-3 text-sm transition-colors duration-250`;
-            let tag = isSelf ? `<span class="text-[10px] bg-neutral-900 dark:bg-white/10 text-white px-1.5 py-0.5 rounded font-bold tracking-widest">YOU</span>` : "";
-            const labelText = isRed ? "现实改写 // ASK THE AGENCY" : "异常能力 // ANOMALY ABILITY";
-            const labelColor = isRed ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400";
-            let diceHtml = `<div class="flex flex-wrap gap-4 my-1.5">`;
-            data.rolls.forEach(val => {
-                diceHtml += `<div class="${diceClass}"><span class="triangle-text">${val}</span></div>`;
-            });
-            diceHtml += `</div>`;
-            let statusBadge = "";
-            if (data.isThreefold) {
-                const sublimationBg = isRed ? "bg-red-600 dark:bg-red-950 border-red-700 dark:border-red-500 text-white dark:text-red-300" : "bg-blue-600 dark:bg-blue-950 border-blue-700 dark:border-blue-500 text-white dark:text-blue-300";
-                statusBadge = `<div class="mt-2 text-center py-2.5 ${sublimationBg} border rounded font-black text-xs tracking-widest">▲▲▲ 三重升华 // TRISENDENCE ▲▲▲</div>`;
-            } else if (data.isSuccess) {
-                const successBg = isRed ? "bg-red-100 dark:bg-red-950/20 border-red-300 dark:border-red-900/40 text-red-650" : "bg-blue-100 dark:bg-blue-950/20 border-blue-300 dark:border-blue-900/40 text-blue-650";
-                statusBadge = `<div class="mt-2 text-center py-1 ${successBg} dark:text-neutral-300 border rounded text-xs font-black tracking-widest">▼ 判定成功 // SUCCESS</div>`;
-            } else {
-                statusBadge = `<div class="mt-2 text-center py-1 bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded text-neutral-500 text-xs font-black tracking-widest">▲ 判定失败 // FAILURE</div>`;
-            }
+            div.className = `p-4 rounded border-2 ${data.isSuccess ? (isRed ? 'border-red-400 bg-red-50' : 'border-blue-400 bg-blue-50') : 'border-neutral-300'} flex flex-col gap-3 text-sm`;
             div.innerHTML = `
-                <div class="flex justify-between items-center text-xs text-neutral-500">
-                    <span class="font-black flex items-center gap-2 uppercase text-neutral-800 dark:text-neutral-300 tracking-wider">${data.sender} ${tag}</span>
-                    <span class="font-bold ${labelColor}">${labelText}</span>
-                </div>
-                ${diceHtml}
-                <div class="bg-white/80 dark:bg-black/40 p-2.5 rounded border border-neutral-200 dark:border-neutral-900/50 text-xs text-neutral-600 dark:text-neutral-400 mt-1 flex justify-between items-center transition-colors">
-                    <div>
-                        检测到 “3” 的数量：<span class="${isRed ? 'text-red-650 dark:text-red-500' : 'text-blue-650 dark:text-blue-500'} font-black">${data.countOfThree}</span> 
-                        <span class="mx-1">/</span> 当前燃尽值：<span class="text-neutral-400 font-black">${data.burnout}</span>
-                    </div>
-                    <div class="text-right">
-                        净判定：<span class="${data.netResult >= 1 ? (isRed ? 'text-red-600 dark:text-red-500' : 'text-blue-600 dark:text-blue-500') : 'text-neutral-500'} font-black text-sm">${data.netResult >= 0 ? '+' + data.netResult : data.netResult}</span>
-                    </div>
-                </div>
-                ${statusBadge}
+                <div class="flex justify-between text-xs text-neutral-500"><span>${data.sender}</span><span>${isRed ? '现实改写' : '异常能力'}</span></div>
+                <div class="font-black text-lg">${data.rolls.join(', ')}</div>
+                <div class="text-xs">净判定：${data.netResult >= 0 ? '+' + data.netResult : data.netResult} ${data.isSuccess ? ' // 成功' : ' // 失败'}</div>
             `;
             return div;
         }
 
+        function rollAgencyDice() {
+            const burnout = parseInt(document.getElementById('burnout-value').value) || 0;
+            const rollType = document.querySelector('input[name="roll-type"]:checked').value;
+            const rolls = Array.from({length: 6}, () => Math.floor(Math.random() * 4) + 1);
+            const countOfThree = rolls.filter(r => r === 3).length;
+            const rollData = {
+                id: Date.now(),
+                sender: document.getElementById('username').value || "特工",
+                rolls: rolls,
+                rollType: rollType,
+                netResult: countOfThree - burnout,
+                isSuccess: countOfThree >= (burnout + 1),
+                isSecret: document.getElementById('is-secret').checked
+            };
+            if (!rollData.isSecret) broadcastRoll(rollData);
+            pushToLocalHistory(rollData);
+        }
+
+        function handleIncomingRoll(data) { if (data.sender !== myName) pushToLocalHistory(data); }
+        function pushToLocalHistory(data) { syncHistoryFromStorage(); activeHistory.unshift(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory)); renderAllLogs(); }
+        async function broadcastRoll(rollData) { await supabaseClient.from('agency_rolls').insert([{ payload: rollData }]); }
         function appendSystemLog(text) {
             const container = document.getElementById('log-container');
-            if (container.querySelector('.text-neutral-400') || container.querySelector('.text-neutral-650')) {
-                container.innerHTML = '';
-            }
             const div = document.createElement('div');
-            div.className = "text-center text-[10px] text-red-700/80 dark:text-red-500/60 py-1.5 bg-red-100/10 dark:bg-red-950/5 rounded border border-red-300/40 dark:border-red-900/10";
+            div.className = "text-center text-[10px] text-red-700 py-1.5 bg-red-100 rounded border border-red-300";
             div.innerText = `▲ SYS_LOG: ${text}`;
             container.insertBefore(div, container.firstChild);
         }
-
-        function clearAllLogs() {
-            activeHistory = [];
-            localStorage.removeItem(STORAGE_KEY);
-            renderAllLogs();
-            appendSystemLog("本地历史记录已全部清空，终端格式化完成。");
-        }
-
-        function clearCacheAndReconnect() {
-            if (confirm("警告：此操作将清除所有本地设置及历史，并重置终端连接。是否继续？")) {
-                localStorage.clear();
-                supabaseClient = null;
-                appendSystemLog("正在强制断开并重启网关...");
-                setTimeout(() => {
-                    location.reload();
-                }, 500);
-            }
-        }
+        function clearCacheAndReconnect() { if (confirm("确认重置终端？")) { localStorage.clear(); location.reload(); } }
     </script>
 </body>
 </html>
