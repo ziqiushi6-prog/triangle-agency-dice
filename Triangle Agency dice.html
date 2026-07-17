@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgencyOS - Triangle Agency Dice Pool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 换回 P2P (PeerJS) 方案 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        /* 亮色模式：经典的冷白纸张底色 + 浅红色网格线 */
+        .agency-bg-light {
+            background-color: #faf9f6;
+            background-image: linear-gradient(rgba(220, 38, 38, 0.02) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(220, 38, 38, 0.02) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        /* 暗色模式：深邃的红黑色底色 + 微弱红网格线 */
+        .dark .agency-bg-dark {
+            background-color: #0c0505;
+            background-image: linear-gradient(rgba(220, 38, 38, 0.03) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(220, 38, 38, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        /* 红色三角形骰子（现实改写） */
+        .triangle-dice-red {
+            width: 0;
+            height: 0;
+            border-left: 22px solid transparent;
+            border-right: 22px solid transparent;
+            border-bottom: 38px solid #dc2626;
+            position: relative;
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
+            transition: transform 0.2s ease;
+        }
+        /* 蓝色三角形骰子（异常能力） */
+        .triangle-dice-blue {
+            width: 0;
+            height: 0;
+            border-left: 22px solid transparent;
+            border-right: 22px solid transparent;
+            border-bottom: 38px solid #2563eb;
+            position: relative;
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
+            transition: transform 0.2s ease;
+        }
+        
+        .triangle-dice-red:hover, .triangle-dice-blue:hover {
+            transform: scale(1.1);
+        }
+        .triangle-text {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-weight: 900;
+            font-size: 16px;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body id="main-body" class="agency-bg-light text-neutral-900 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350">
+
+    <!-- 顶部导航栏 -->
+    <header class="border-b-2 border-neutral-900 bg-white dark:bg-neutral-950 dark:border-red-950 px-6 py-4 flex flex-wrap gap-4 justify-between items-center transition-colors">
+        <div class="flex items-center gap-3">
+            <div class="bg-red-600 text-white dark:text-black px-2.5 py-1 font-black tracking-tighter text-sm rounded-sm uppercase">▲ AgencyOS</div>
+            <h1 class="text-md font-black tracking-widest text-neutral-900 dark:text-red-500">PUBLIC TERMINAL // 公共特工骰池</h1>
+            
+            <!-- 风格切换按钮 -->
+            <button onclick="toggleTheme()" id="theme-btn" class="ml-2 text-xs bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 text-neutral-700 dark:text-neutral-300 px-2.5 py-1 rounded border border-neutral-300 dark:border-neutral-800 transition flex items-center gap-1.5">
+                ☀ 亮色特工终端
+            </button>
+        </div>
+        <!-- 联机状态栏已被应用户要求完全隐藏（逻辑依然在后台静默运行） -->
+        <div id="connection-status" class="hidden">LOCAL</div>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6">
+        
+        <!-- 左侧：特工控制台 -->
+        <div class="w-full md:w-1/2 flex flex-col gap-6">
+            <div class="bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950/60 rounded p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-none flex flex-col justify-between transition-colors">
+                <div>
+                    <h2 class="text-sm font-black mb-4 text-neutral-950 dark:text-red-500 border-b-2 border-neutral-900 dark:border-red-950 pb-2 tracking-wider">▲ 特工控制台 / AGENT CONSOLE</h2>
+                    
+                    <!-- 特工代号设置 -->
+                    <div class="mb-5">
+                        <label class="block text-xs font-black text-neutral-500 dark:text-neutral-400 mb-1.5">特工代号 / CODE NAME</label>
+                        <input type="text" id="username" placeholder="未命名特工 (UNNAMED)" onchange="saveName()" class="w-full bg-neutral-50 dark:bg-black border border-neutral-300 dark:border-neutral-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-650 dark:focus:border-red-600 text-neutral-900 dark:text-red-200 transition">
+                    </div>
+
+                    <!-- 掷骰类型选择 -->
+                    <div class="mb-5">
+                        <label class="block text-xs font-black text-neutral-500 dark:text-neutral-400 mb-2">掷骰类型 / DICE ROLL TYPE</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex items-center justify-center gap-2.5 p-3 bg-red-50/50 dark:bg-red-950/10 border-2 border-red-500 rounded cursor-pointer transition hover:bg-red-100/50 dark:hover:bg-red-950/20">
+                                <input type="radio" name="roll-type" value="reality" checked class="w-4 h-4 accent-red-600">
+                                <span class="text-xs font-black text-red-750 dark:text-red-400">现实改写</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-2.5 p-3 bg-blue-50/50 dark:bg-blue-950/10 border-2 border-blue-500 rounded cursor-pointer transition hover:bg-blue-100/50 dark:hover:bg-blue-950/20">
+                                <input type="radio" name="roll-type" value="anomaly" class="w-4 h-4 accent-blue-600">
+                                <span class="text-xs font-black text-blue-750 dark:text-blue-400">异常能力</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 燃尽数设置 -->
+                    <div class="mb-6 bg-neutral-50 dark:bg-black p-4 rounded border border-neutral-250 dark:border-neutral-900 transition-colors">
+                        <label class="block text-xs text-neutral-600 dark:text-neutral-400 font-black mb-2">当前燃尽值 / BURNOUT VALUE</label>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <input type="number" id="burnout-value" min="0" max="6" value="1" class="w-20 bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950 text-center text-lg font-black text-red-650 dark:text-red-500 rounded p-2 focus:outline-none focus:border-red-600">
+                            <span class="text-xs text-neutral-500 dark:text-neutral-400">（判定成功标准：掷出的 “3” 数量大于或等于该数值 + 1）</span>
+                        </div>
+                    </div>
+
+                    <!-- 投掷按钮 -->
+                    <button onclick="rollAgencyDice()" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-5 rounded text-lg tracking-widest transition shadow-md border-b-4 border-red-800 active:border-b-0 uppercase">
+                        ▲ 特工掷骰 (6D4)
+                    </button>
+                </div>
+
+                <div class="space-y-4 mt-6">
+                    <div class="space-y-3 bg-neutral-50 dark:bg-black p-4 rounded border border-neutral-250 dark:border-neutral-900">
+                        <label class="flex items-center gap-2.5 cursor-pointer text-xs text-neutral-600 dark:text-neutral-400 font-bold">
+                            <input type="checkbox" id="is-secret" class="w-4 h-4 rounded accent-red-600 bg-neutral-200 dark:bg-neutral-900 border-neutral-300 dark:border-neutral-800">
+                            <span>暗骰：结果仅向自己公开</span>
+                        </label>
+                    </div>
+
+                    <!-- 清理终端 -->
+                    <div class="border-t border-neutral-300 dark:border-red-950 pt-4">
+                        <button onclick="clearAllLogs()" class="w-full bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 border border-neutral-300 dark:border-red-950 text-neutral-600 dark:text-neutral-400 py-2 rounded text-xs font-bold transition">
+                            格式化本地终端记录
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：实时特工日志 -->
+        <div class="w-full md:w-1/2 flex flex-col bg-white dark:bg-neutral-950 border-2 border-neutral-900 dark:border-red-950/60 rounded p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-none h-[550px] md:h-auto transition-colors">
+            <div class="flex justify-between items-center mb-4 border-b-2 border-neutral-900 dark:border-red-950 pb-2">
+                <h2 class="text-sm font-black text-neutral-950 dark:text-red-500 tracking-wider">
+                    特工日志 / AGENCY ACTIVITY LOG
+                </h2>
+                <!-- 修改了重连的按钮样式，移除了之前的 emoji，更加契合 AgencyOS 系统风格 -->
+                <button onclick="initP2PNetwork()" class="text-[10px] uppercase font-black tracking-widest bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 border border-neutral-300 dark:border-neutral-800 px-2.5 py-1 rounded transition text-neutral-600 dark:text-neutral-400">
+                    // REBOOT_SIGNAL
+                </button>
+            </div>
+            <div id="log-container" class="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-red-950">
+                <div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="border-t border-neutral-300 dark:border-neutral-950 bg-neutral-50 dark:bg-black text-center py-4 text-[10px] text-neutral-500 dark:text-neutral-700 uppercase tracking-widest transition-colors">
+        AgencyOS v3.85 // Peer-to-Peer Intercommunication Module // LocalStorage Enabled
+    </footer>
+
+    <script>
+        let myName = "未命名特工";
+        let isDarkMode = false;
+        
+        // P2P 核心连接句柄
+        let peer = null;
+        let connections = new Map(); // 存储所有的连接映射
+        const ROOM_PREFIX = "agency_public_pool_v35_"; 
+        const STORAGE_KEY = "agency_dice_history_v3";
+
+        function toggleTheme() {
+            const body = document.getElementById('main-body');
+            const themeBtn = document.getElementById('theme-btn');
+            isDarkMode = !isDarkMode;
+
+            if (isDarkMode) {
+                document.documentElement.classList.add('dark');
+                body.className = "agency-bg-dark text-gray-100 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350 dark";
+                themeBtn.innerText = "🌙 护眼暗色终端";
+                localStorage.setItem('agency_theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                body.className = "agency-bg-light text-neutral-900 min-h-screen flex flex-col font-mono selection:bg-red-600 selection:text-white transition-colors duration-350";
+                themeBtn.innerText = "☀ 亮色特工终端";
+                localStorage.setItem('agency_theme', 'light');
+            }
+        }
+
+        window.onload = function() {
+            // 1. 优先初始化主题
+            const savedTheme = localStorage.getItem('agency_theme');
+            if (savedTheme === 'dark') { toggleTheme(); }
+
+            // 2. 【Bug修复的关键】：先确定昵称，再读历史数据
+            const savedName = localStorage.getItem('agency_nick');
+            if (savedName) {
+                myName = savedName;
+                document.getElementById('username').value = myName;
+            } else {
+                myName = "未命名特工";
+            }
+
+            // 3. 纯展现读取本地历史记录（绝不会产生多余的“未命名”写入）
+            loadDiceHistory();
+
+            // 4. 静默启动 P2P 广播网络
+            initP2PNetwork();
+        };
+
+        function saveName() {
+            const nameInput = document.getElementById('username').value.trim();
+            myName = nameInput || "未命名特工";
+            localStorage.setItem('agency_nick', myName);
+        }
+
+        // ================= P2P 网络互通架构 =================
+        function initP2PNetwork() {
+            // 生成当前客户端专属的 PeerID
+            const myPeerId = ROOM_PREFIX + Math.random().toString(36).substr(2, 9);
+            
+            // 实例化 Peer
+            peer = new Peer(myPeerId);
+
+            peer.on('open', (id) => {
+                // 静默连上公网握手节点，开始发现其他在线特工
+                discoverAndConnectPeers();
+            });
+
+            // 监听外来连接（当别的特工发现你并连过来时触发）
+            peer.on('connection', (conn) => {
+                setupConnectionListeners(conn);
+            });
+        }
+
+        // 寻找公网里带相同前缀的在线客户端
+        function discoverAndConnectPeers() {
+            // 利用 PeerJS 官方开放的公开信道源接口扫描局域节点
+            peer.listAllPeers((peers) => {
+                if (!peers) return;
+                peers.forEach(peerId => {
+                    // 如果对方带有共同的房间前缀，且不是我自己，同时还没建立过连接，就主动连过去
+                    if (peerId.startsWith(ROOM_PREFIX) && peerId !== peer.id && !connections.has(peerId)) {
+                        const conn = peer.connect(peerId);
+                        setupConnectionListeners(conn);
+                    }
+                });
+            });
+        }
+
+        function setupConnectionListeners(conn) {
+            conn.on('open', () => {
+                connections.set(conn.peer, conn);
+            });
+
+            conn.on('data', (data) => {
+                handleIncomingRoll(data);
+            });
+
+            conn.on('close', () => {
+                connections.delete(conn.peer);
+            });
+            
+            conn.on('error', () => {
+                connections.delete(conn.peer);
+            });
+        }
+
+        // 广播向外推数据
+        function broadcastData(data) {
+            connections.forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        // ================= 核心判定与投掷逻辑 =================
+        function rollAgencyDice() {
+            const burnout = parseInt(document.getElementById('burnout-value').value) || 0;
+            const rollType = document.querySelector('input[name="roll-type"]:checked').value;
+            const rolls = [];
+            let countOfThree = 0;
+
+            for (let i = 0; i < 6; i++) {
+                const val = Math.floor(Math.random() * 4) + 1;
+                rolls.push(val);
+                if (val === 3) countOfThree++;
+            }
+
+            const isThreefold = (countOfThree === 3);
+            const netResult = countOfThree - burnout;
+            const isSuccess = isThreefold || (netResult >= 1);
+
+            const rollData = {
+                id: "roll_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                sender: myName,
+                rolls: rolls,
+                rollType: rollType, 
+                countOfThree: countOfThree,
+                burnout: burnout,
+                netResult: netResult,
+                isThreefold: isThreefold,
+                isSuccess: isSuccess,
+                isSecret: document.getElementById('is-secret').checked,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            };
+
+            // 1. 本地率先渲染
+            renderRoll(rollData, true, false);
+            
+            // 2. 刻进自己的本地存储
+            saveToHistory(rollData);
+
+            // 3. 只要不是暗骰且网络通道里有人，顺着管道直接推送
+            if (!rollData.isSecret) {
+                broadcastData(rollData);
+            }
+        }
+
+        function handleIncomingRoll(data) {
+            if (data.isSecret) {
+                renderSecretNotice(data.sender, data.timestamp);
+            } else {
+                renderRoll(data, false, false);
+                saveToHistory(data); // 别人传过来的公开结果，无缝存入本地历史记录
+            }
+        }
+
+        // ================= 存储持久化与纯粹渲染 (修复刷出未命名Bug) =================
+        function saveToHistory(rollData) {
+            let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            // 精准校验 ID，避免任何多重渲染引发的重复写入
+            if (!history.some(item => item.id === rollData.id)) {
+                history.unshift(rollData);
+                if (history.length > 40) history.pop();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+            }
+        }
+
+        function loadDiceHistory() {
+            const container = document.getElementById('log-container');
+            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            
+            if (history.length > 0) {
+                container.innerHTML = '';
+                // 反转后依次 append，最新一条永远在顶端，仅用于历史数据重绘展示，不写磁盘
+                [...history].reverse().forEach(data => {
+                    const isSelf = (data.sender === myName);
+                    renderRoll(data, isSelf, true);
+                });
+            }
+        }
+
+        function renderRoll(data, isSelf = false, isHistoryRestore = false) {
+            const container = document.getElementById('log-container');
+            if (container.querySelector('.text-neutral-400') || container.querySelector('.text-neutral-650')) {
+                container.innerHTML = '';
+            }
+
+            const div = document.createElement('div');
+            const isRed = (data.rollType === 'reality');
+            
+            let cardStyle = "";
+            let diceClass = "";
+            
+            if (isRed) {
+                cardStyle = data.isSuccess 
+                    ? "border-red-400/80 bg-red-50/40 dark:border-red-950/50 dark:bg-red-950/10" 
+                    : "border-neutral-350 bg-neutral-50 dark:border-neutral-900 dark:bg-neutral-950/50";
+                
+                if (data.isThreefold) {
+                    cardStyle = "border-red-600 bg-red-50/90 dark:border-red-500/50 dark:bg-red-950/30 shadow-[4px_4px_0px_0px_#dc2626] dark:shadow-none";
+                }
+                diceClass = "triangle-dice-red";
+            } else {
+                cardStyle = data.isSuccess 
+                    ? "border-blue-400/80 bg-blue-50/40 dark:border-blue-950/50 dark:bg-blue-950/10" 
+                    : "border-neutral-350 bg-neutral-50 dark:border-neutral-900 dark:bg-neutral-950/50";
+                
+                if (data.isThreefold) {
+                    cardStyle = "border-blue-600 bg-blue-50/90 dark:border-blue-500/50 dark:bg-blue-950/30 shadow-[4px_4px_0px_0px_#2563eb] dark:shadow-none";
+                }
+                diceClass = "triangle-dice-blue";
+            }
+
+            div.className = `p-4 rounded border-2 ${cardStyle} flex flex-col gap-3 text-sm transition-colors duration-250`;
+            
+            let tag = "";
+            if (isSelf) {
+                tag = `<span class="text-[10px] bg-neutral-900 dark:bg-white/10 text-white dark:text-white px-1.5 py-0.5 rounded font-bold tracking-widest">YOU</span>`;
+            }
+
+            const labelText = isRed ? "现实改写 // ASK THE AGENCY" : "异常能力 // ANOMALY ABILITY";
+            const labelColor = isRed ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400";
+            
+            let diceHtml = `<div class="flex flex-wrap gap-4 my-1.5">`;
+            data.rolls.forEach(val => {
+                diceHtml += `
+                    <div class="${diceClass}">
+                        <span class="triangle-text">${val}</span>
+                    </div>
+                `;
+            });
+            diceHtml += `</div>`;
+
+            let statusBadge = "";
+            if (data.isThreefold) {
+                const sublimationBg = isRed ? "bg-red-600 dark:bg-red-950 border-red-700 dark:border-red-500 text-white dark:text-red-300" : "bg-blue-600 dark:bg-blue-950 border-blue-700 dark:border-blue-500 text-white dark:text-blue-300";
+                statusBadge = `
+                    <div class="mt-2 text-center py-2.5 ${sublimationBg} border rounded font-black text-xs tracking-widest">
+                        ▲▲▲ 三重升华 // TRISENDENCE ▲▲▲
+                    </div>`;
+            } else if (data.isSuccess) {
+                const successBg = isRed ? "bg-red-100 dark:bg-red-950/20 border-red-300 dark:border-red-900/40 text-red-650" : "bg-blue-100 dark:bg-blue-950/20 border-blue-300 dark:border-blue-900/40 text-blue-650";
+                statusBadge = `<div class="mt-2 text-center py-1 ${successBg} dark:text-neutral-300 border rounded text-xs font-black tracking-widest">▼ 判定成功 // SUCCESS</div>`;
+            } else {
+                statusBadge = `<div class="mt-2 text-center py-1 bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded text-neutral-550 dark:text-neutral-500 text-xs font-black tracking-widest">▲ 判定失败 // FAILURE</div>`;
+            }
+
+            div.innerHTML = `
+                <div class="flex justify-between items-center text-xs text-neutral-450 dark:text-neutral-555">
+                    <span class="font-black flex items-center gap-2 uppercase text-neutral-800 dark:text-neutral-300 tracking-wider">${data.sender} ${tag}</span>
+                    <span class="font-bold ${labelColor}">${labelText}</span>
+                </div>
+                
+                ${diceHtml}
+
+                <div class="bg-white/80 dark:bg-black/40 p-2.5 rounded border border-neutral-200 dark:border-neutral-900/50 text-xs text-neutral-600 dark:text-neutral-400 mt-1 flex justify-between items-center transition-colors">
+                    <div>
+                        检测到 “3” 的数量：<span class="${isRed ? 'text-red-650 dark:text-red-500' : 'text-blue-650 dark:text-blue-500'} font-black">${data.countOfThree}</span> 
+                        <span class="mx-1">/</span> 
+                        当前燃尽值：<span class="text-neutral-555 dark:text-neutral-400 font-black">${data.burnout}</span>
+                    </div>
+                    <div class="text-right">
+                        净判定：<span class="${data.netResult >= 1 ? (isRed ? 'text-red-600 dark:text-red-500' : 'text-blue-600 dark:text-blue-500') : 'text-neutral-550'} font-black text-sm">${data.netResult >= 0 ? '+' + data.netResult : data.netResult}</span>
+                    </div>
+                </div>
+
+                ${statusBadge}
+            `;
+            
+            if (isHistoryRestore) {
+                container.appendChild(div);
+            } else {
+                container.insertBefore(div, container.firstChild);
+            }
+        }
+
+        function renderSecretNotice(sender, timestamp) {
+            const container = document.getElementById('log-container');
+            if (container.querySelector('.text-neutral-400') || container.querySelector('.text-neutral-650')) {
+                container.innerHTML = '';
+            }
+
+            const div = document.createElement('div');
+            div.className = "p-3 rounded border border-neutral-300 dark:border-neutral-900 bg-neutral-100/40 dark:bg-neutral-950/20 text-xs text-neutral-555 flex justify-between items-center";
+            div.innerHTML = `
+                <span>${sender} 进行了一次暗骰...</span>
+                <span>${timestamp}</span>
+            `;
+            container.insertBefore(div, container.firstChild);
+        }
+
+        function appendSystemLog(text) {
+            const container = document.getElementById('log-container');
+            if (container.querySelector('.text-neutral-400') || container.querySelector('.text-neutral-650')) {
+                container.innerHTML = '';
+            }
+
+            const div = document.createElement('div');
+            div.className = "text-center text-[10px] text-red-700/80 dark:text-red-500/60 py-1.5 bg-red-105/10 dark:bg-red-950/5 rounded border border-red-300/40 dark:border-red-900/10";
+            div.innerText = `▲ SYS_LOG: ${text}`;
+            container.insertBefore(div, container.firstChild);
+        }
+
+        function clearAllLogs() {
+            localStorage.removeItem(STORAGE_KEY);
+            clearLogsLocal();
+            appendSystemLog("本地历史记录已全部清空，终端格式化完成。");
+        }
+
+        function clearLogsLocal() {
+            const container = document.getElementById('log-container');
+            container.innerHTML = '<div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>';
+        }
+    </script>
+</body>
+</html>
