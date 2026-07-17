@@ -147,18 +147,20 @@
     </main>
 
     <footer class="border-t border-neutral-300 dark:border-neutral-950 bg-neutral-50 dark:bg-black text-center py-4 text-[10px] text-neutral-500 dark:text-neutral-700 uppercase tracking-widest transition-colors">
-        AgencyOS v3.87 // Peer-to-Peer Intercommunication Module // Multi-Log Fixed
+        AgencyOS v4.10 // Peer-to-Peer Intercommunication Module // Active Sync Ready
     </footer>
 
     <script>
         let myName = "未命名特工";
         let isDarkMode = false;
-        let isInitializing = true; 
         
         let peer = null;
         let connections = new Map(); 
-        const ROOM_PREFIX = "agency_public_pool_v37_"; // 再次升级版本，彻底刷新缓存，保证日志恢复正常
-        const STORAGE_KEY = "agency_dice_history_v5";
+        const ROOM_PREFIX = "agency_public_pool_v41_"; 
+        const STORAGE_KEY = "agency_dice_history_v11"; // 再次强升存储版本，清除历史脏数据
+
+        // 内存中的历史记录队列
+        let activeHistory = [];
 
         function toggleTheme() {
             const body = document.getElementById('main-body');
@@ -178,10 +180,22 @@
             }
         }
 
-        // 严格的初始化逻辑
-        window.onload = function() {
-            isInitializing = true;
+        // 统一从 localStorage 获取最新最全的数据，并同步给内存变量
+        function syncHistoryFromStorage() {
+            const savedHistory = localStorage.getItem(STORAGE_KEY);
+            if (savedHistory) {
+                try {
+                    activeHistory = JSON.parse(savedHistory);
+                } catch(e) {
+                    activeHistory = [];
+                }
+            } else {
+                activeHistory = [];
+            }
+        }
 
+        // 统一初始化
+        window.onload = function() {
             // 1. 恢复主题
             const savedTheme = localStorage.getItem('agency_theme');
             if (savedTheme === 'dark') { toggleTheme(); }
@@ -196,13 +210,19 @@
                 document.getElementById('username').value = "";
             }
 
-            // 3. 渲染本地历史数据
-            loadDiceHistory();
+            // 3. 彻底清理不兼容的历史遗留 localStorage (清理 v10 以前的版本)
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith("agency_dice_history_") && key !== STORAGE_KEY) {
+                    localStorage.removeItem(key);
+                }
+            }
 
-            // 4. 放开锁
-            isInitializing = false;
+            // 4. 同步并渲染
+            syncHistoryFromStorage();
+            renderAllLogs();
 
-            // 5. 开启网络
+            // 5. 开启 P2P 
             initP2PNetwork();
         };
 
@@ -210,6 +230,8 @@
             const nameInput = document.getElementById('username').value.trim();
             myName = nameInput || "未命名特工";
             localStorage.setItem('agency_nick', myName);
+            // 每次改名后，根据新名字重新给自己的历史记录打标渲染
+            renderAllLogs();
         }
 
         // ================= P2P 网络模块 =================
@@ -292,70 +314,64 @@
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             };
 
-            // 渲染并保存
-            renderRoll(rollData, true);
-            saveToHistory(rollData);
+            // 【核心修正】强制从 localStorage 加载最新全局历史，确保队列不残缺
+            syncHistoryFromStorage();
 
+            // 1. 将新数据塞到队列最前头
+            activeHistory.unshift(rollData);
+            if (activeHistory.length > 40) activeHistory.pop();
+
+            // 2. 写入存储
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
+            
+            // 3. 渲染
+            renderAllLogs();
+
+            // 4. 广播
             if (!rollData.isSecret) {
                 broadcastData(rollData);
             }
         }
 
         function handleIncomingRoll(data) {
-            if (isInitializing) return; 
-            
             if (data.isSecret) {
+                // 如果是暗骰通知，它不需要进持久化队列，直接作为一个临时 log 塞到最前面
                 renderSecretNotice(data.sender, data.timestamp);
             } else {
-                renderRoll(data, false);
-                saveToHistory(data); 
+                // 收到别人投掷时，同样要保证先同步本地历史，再判断去重追加
+                syncHistoryFromStorage();
+                
+                if (!activeHistory.some(item => item.id === data.id)) {
+                    activeHistory.unshift(data);
+                    if (activeHistory.length > 40) activeHistory.pop();
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
+                    renderAllLogs();
+                }
             }
         }
 
-        // ================= 数据写入与持久化渲染 =================
-        function saveToHistory(rollData) {
-            if (isInitializing) return; 
-            
-            let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-            // 防重
-            if (!history.some(item => item.id === rollData.id)) {
-                history.unshift(rollData); // 最新的放前面
-                if (history.length > 40) history.pop(); // 最多存 40 条
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-            }
-        }
-
-        function loadDiceHistory() {
+        // ================= 极其稳固的渲染引擎 =================
+        function renderAllLogs() {
             const container = document.getElementById('log-container');
-            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-            
-            if (history.length > 0) {
-                container.innerHTML = '';
-                // 历史记录渲染：旧数据先追加，新数据后追加，保证顺序
-                history.forEach(data => {
-                    const isSelf = (data.sender === myName);
-                    appendRollToBottom(data, isSelf);
-                });
-            }
-        }
+            if (!container) return;
 
-        // 辅助渲染：新掷骰子（插在最顶部）
-        function renderRoll(data, isSelf = false) {
-            const container = document.getElementById('log-container');
-            if (container.querySelector('.text-neutral-400') || container.querySelector('.text-neutral-650')) {
-                container.innerHTML = '';
+            // 【核心修正】渲染动作发起时，必须强行从 LocalStorage 同步数据，避免内存变量 activeHistory 在局部被恶意置空
+            syncHistoryFromStorage();
+
+            if (activeHistory.length === 0) {
+                container.innerHTML = '<div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>';
+                return;
             }
 
-            const div = createRollElement(data, isSelf);
-            // 永远插入到最顶部！
-            container.insertBefore(div, container.firstChild);
-        }
+            // 清空重新构建
+            container.innerHTML = '';
 
-        // 辅助渲染：加载历史时（追加到最底部）
-        function appendRollToBottom(data, isSelf = false) {
-            const container = document.getElementById('log-container');
-            const div = createRollElement(data, isSelf);
-            container.appendChild(div);
+            // 依序由新到旧（从 index 0 开始）渲染到页面上
+            activeHistory.forEach(data => {
+                const isSelf = (data.sender === myName);
+                const element = createRollElement(data, isSelf);
+                container.appendChild(element); 
+            });
         }
 
         // 提取核心 HTML 构造器
@@ -449,14 +465,10 @@
         }
 
         function clearAllLogs() {
+            activeHistory = [];
             localStorage.removeItem(STORAGE_KEY);
-            clearLogsLocal();
+            renderAllLogs();
             appendSystemLog("本地历史记录已全部清空，终端格式化完成。");
-        }
-
-        function clearLogsLocal() {
-            const container = document.getElementById('log-container');
-            container.innerHTML = '<div class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>';
         }
     </script>
 </body>
