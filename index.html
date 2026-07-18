@@ -127,7 +127,6 @@
                         <button onclick="clearAllLogs()" class="w-full bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 border border-neutral-300 dark:border-red-950 text-neutral-600 dark:text-neutral-400 py-2 rounded text-xs font-bold transition">
                             格式化本地终端记录
                         </button>
-                        <!-- 新增：清除缓存并重连 -->
                         <button onclick="clearCacheAndReconnect()" class="w-full bg-red-600/10 hover:bg-red-600/20 border border-red-500/50 text-red-600 dark:text-red-400 py-2 rounded text-xs font-bold transition flex items-center justify-center gap-2">
                             <span>⚠ 清除缓存并重连</span>
                         </button>
@@ -144,7 +143,6 @@
                 </h2>
             </div>
             <div id="log-container" class="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-red-950">
-                <!-- 【精准修复处】添加了 id="empty-state-msg" -->
                 <div id="empty-state-msg" class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>
             </div>
         </div>
@@ -162,6 +160,8 @@
         let myName = "未命名特工";
         let isDarkMode = false;
         
+        // 【新增逻辑】设备唯一识别码，防止同名导致的本地拦截
+        let myClientId = ""; 
         const STORAGE_KEY = "agency_dice_history_v20"; 
         let activeHistory = [];
 
@@ -182,6 +182,17 @@
             }
         }
 
+        function initClientId() {
+            // 【新增逻辑】生成或读取本地设备凭证
+            const savedId = localStorage.getItem('agency_client_id');
+            if (savedId) {
+                myClientId = savedId;
+            } else {
+                myClientId = 'agent_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('agency_client_id', myClientId);
+            }
+        }
+
         function syncHistoryFromStorage() {
             const savedHistory = localStorage.getItem(STORAGE_KEY);
             if (savedHistory) {
@@ -192,6 +203,8 @@
         }
 
         window.onload = function() {
+            initClientId(); // 初始化设备 ID
+            
             const savedTheme = localStorage.getItem('agency_theme');
             if (savedTheme === 'dark') { toggleTheme(); }
             const savedName = localStorage.getItem('agency_nick');
@@ -258,6 +271,7 @@
             const isSuccess = isThreefold || (netResult >= 1);
             const rollData = {
                 id: "roll_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                clientId: myClientId, // 【核心修改点】：打包数据时带上唯一的设备身份识别码
                 sender: myName,
                 rolls: rolls,
                 rollType: rollType, 
@@ -277,7 +291,8 @@
 
         function handleIncomingRoll(data) {
             if (data.isSecret) return;
-            if (data.sender === myName) return; 
+            // 【核心修改点】：从名字拦截改为凭证拦截，彻底解决同名互相屏蔽的问题
+            if (data.clientId === myClientId) return; 
             pushToLocalHistory(data);
         }
 
@@ -296,13 +311,13 @@
             if (!container) return;
             syncHistoryFromStorage();
             if (activeHistory.length === 0) {
-                // 【精准修复处】同步加上 id="empty-state-msg"
                 container.innerHTML = '<div id="empty-state-msg" class="text-neutral-400 dark:text-neutral-650 text-center text-sm py-12">终端空闲，等待干涉下达...</div>';
                 return;
             }
             container.innerHTML = '';
             activeHistory.forEach(data => {
-                const isSelf = (data.sender === myName);
+                // 【核心修改点】：如果数据里有 clientId，就用它严格判断“YOU”；如果没有（以前的老数据），降级用昵称判断
+                const isSelf = data.clientId ? (data.clientId === myClientId) : (data.sender === myName);
                 const element = createRollElement(data, isSelf);
                 container.appendChild(element); 
             });
@@ -371,13 +386,10 @@
 
         function appendSystemLog(text) {
             const container = document.getElementById('log-container');
-            
-            // 【精准修复处】改成通过专属 ID 查找并删除，不再误伤正常记录卡片
             const emptyMsg = document.getElementById('empty-state-msg');
             if (emptyMsg) {
                 emptyMsg.remove();
             }
-            
             const div = document.createElement('div');
             div.className = "text-center text-[10px] text-red-700/80 dark:text-red-500/60 py-1.5 bg-red-100/10 dark:bg-red-950/5 rounded border border-red-300/40 dark:border-red-900/10";
             div.innerText = `▲ SYS_LOG: ${text}`;
