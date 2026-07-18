@@ -160,7 +160,6 @@
         let myName = "未命名特工";
         let isDarkMode = false;
         
-        // 【新增逻辑】设备唯一识别码，防止同名导致的本地拦截
         let myClientId = ""; 
         const STORAGE_KEY = "agency_dice_history_v20"; 
         let activeHistory = [];
@@ -183,7 +182,6 @@
         }
 
         function initClientId() {
-            // 【新增逻辑】生成或读取本地设备凭证
             const savedId = localStorage.getItem('agency_client_id');
             if (savedId) {
                 myClientId = savedId;
@@ -203,7 +201,7 @@
         }
 
         window.onload = function() {
-            initClientId(); // 初始化设备 ID
+            initClientId();
             
             const savedTheme = localStorage.getItem('agency_theme');
             if (savedTheme === 'dark') { toggleTheme(); }
@@ -215,6 +213,13 @@
             syncHistoryFromStorage();
             renderAllLogs();
             initSupabaseSync();
+
+            // 【核心修复】：监听浏览器跨标签页缓存变化，同浏览器多开瞬间秒同步
+            window.addEventListener('storage', (e) => {
+                if (e.key === STORAGE_KEY) {
+                    renderAllLogs();
+                }
+            });
         };
 
         function saveName() {
@@ -227,6 +232,9 @@
         function initSupabaseSync() {
             try {
                 supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                fetchRecentHistory();
+
                 supabaseClient
                     .channel('public:agency_rolls')
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agency_rolls' }, payload => {
@@ -245,6 +253,49 @@
             } catch (e) {
                 console.error(e);
                 appendSystemLog("Supabase 网关初始化失败，请检查配置凭证。");
+            }
+        }
+
+        async function fetchRecentHistory() {
+            if (!supabaseClient) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from('agency_rolls')
+                    .select('payload')
+                    .limit(40);
+                    
+                if (error) {
+                    console.error("云端历史拉取失败:", error);
+                    return;
+                }
+                
+                if (data && data.length > 0) {
+                    let hasNew = false;
+                    data.forEach(row => {
+                        const roll = row.payload;
+                        if (roll && !activeHistory.some(item => item.id === roll.id)) {
+                            activeHistory.push(roll);
+                            hasNew = true;
+                        }
+                    });
+                    
+                    if (hasNew) {
+                        activeHistory.sort((a, b) => {
+                            const timeA = parseInt(a.id.split('_')[1]) || 0;
+                            const timeB = parseInt(b.id.split('_')[1]) || 0;
+                            return timeB - timeA;
+                        });
+                        
+                        if (activeHistory.length > 40) {
+                            activeHistory = activeHistory.slice(0, 40);
+                        }
+                        
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
+                        renderAllLogs();
+                    }
+                }
+            } catch (err) {
+                console.error("同步历史异常:", err);
             }
         }
 
@@ -271,7 +322,7 @@
             const isSuccess = isThreefold || (netResult >= 1);
             const rollData = {
                 id: "roll_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
-                clientId: myClientId, // 【核心修改点】：打包数据时带上唯一的设备身份识别码
+                clientId: myClientId, 
                 sender: myName,
                 rolls: rolls,
                 rollType: rollType, 
@@ -291,13 +342,13 @@
 
         function handleIncomingRoll(data) {
             if (data.isSecret) return;
-            // 【核心修改点】：从名字拦截改为凭证拦截，彻底解决同名互相屏蔽的问题
-            if (data.clientId === myClientId) return; 
+            // 【核心修复】：完全移除了基于 clientId 的强制拦截。现在所有数据都会送入 pushToLocalHistory，由底层的单号(id)去重机制处理。
             pushToLocalHistory(data);
         }
 
         function pushToLocalHistory(data) {
             syncHistoryFromStorage();
+            // 【核心机制】：只要这个单号(data.id)本地没有，才添加并渲染。完美避免各种重复。
             if (!activeHistory.some(item => item.id === data.id)) {
                 activeHistory.unshift(data);
                 if (activeHistory.length > 40) activeHistory.pop();
@@ -316,7 +367,6 @@
             }
             container.innerHTML = '';
             activeHistory.forEach(data => {
-                // 【核心修改点】：如果数据里有 clientId，就用它严格判断“YOU”；如果没有（以前的老数据），降级用昵称判断
                 const isSelf = data.clientId ? (data.clientId === myClientId) : (data.sender === myName);
                 const element = createRollElement(data, isSelf);
                 container.appendChild(element); 
