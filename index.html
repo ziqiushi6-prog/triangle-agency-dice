@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- 【新增】强制缓存控制，确保代码更新后用户能实时看到新版本 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -88,7 +88,7 @@
                     
                     <div class="mb-5">
                         <label class="block text-xs font-black text-neutral-500 dark:text-neutral-400 mb-1.5">特工代号 / CODE NAME</label>
-                        <input type="text" id="username" placeholder="未命名特工 (UNNAMED)" onchange="saveName()" class="w-full bg-neutral-50 dark:bg-black border border-neutral-300 dark:border-neutral-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-650 dark:focus:border-red-600 text-neutral-900 dark:text-red-200 transition">
+                        <input type="text" id="username" maxlength="40" placeholder="未命名特工 (UNNAMED)" onchange="saveName()" class="w-full bg-neutral-50 dark:bg-black border border-neutral-300 dark:border-neutral-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-650 dark:focus:border-red-600 text-neutral-900 dark:text-red-200 transition">
                     </div>
 
                     <div class="mb-5">
@@ -161,7 +161,80 @@
         
         let myClientId = ""; 
         const STORAGE_KEY = "agency_dice_history_v20"; 
+        const CLEAR_BEFORE_KEY = "agency_dice_clear_before_v20";
+        const MAX_HISTORY = 40;
+        const MAX_NAME_LENGTH = 40;
         let activeHistory = [];
+        let historyLoaded = false;
+        let realtimeSubscribed = false;
+        let historyFailed = false;
+        let realtimeFailed = false;
+
+        function setSyncStatus(state, message) {
+            const statusTag = document.getElementById('status-tag');
+            if (!statusTag) return;
+            const classes = {
+                connecting: "text-xs px-2 py-1 bg-amber-500/10 text-amber-600 border border-amber-500/30 rounded font-bold uppercase",
+                online: "text-xs px-2 py-1 bg-green-500/10 text-green-600 border border-green-500/30 rounded font-bold uppercase",
+                error: "text-xs px-2 py-1 bg-red-500/10 text-red-600 border border-red-500/30 rounded font-bold uppercase"
+            };
+            statusTag.className = classes[state];
+            statusTag.innerText = message;
+        }
+
+        function refreshSyncStatus() {
+            if (historyFailed) {
+                setSyncStatus('error', 'SYNC ERROR // 历史读取失败');
+                return;
+            }
+            if (realtimeFailed) {
+                setSyncStatus('error', 'SYNC ERROR // 实时连接失败');
+                return;
+            }
+            if (historyLoaded && realtimeSubscribed) {
+                setSyncStatus('online', 'ONLINE // 中枢已同步');
+            } else {
+                setSyncStatus('connecting', 'CONNECTING // 网关连接中');
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>'\"]/g, character => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            })[character]);
+        }
+
+        function getRollTime(data) {
+            const match = typeof data?.id === 'string' && data.id.match(/^roll_(\d+)_/);
+            return match ? Number(match[1]) : 0;
+        }
+
+        function normalizeRoll(data) {
+            if (!data || typeof data !== 'object' || typeof data.id !== 'string' || data.id.length > 100 ||
+                typeof data.sender !== 'string' || data.sender.trim().length === 0 || data.sender.length > MAX_NAME_LENGTH ||
+                !Array.isArray(data.rolls) || data.rolls.length !== 6 ||
+                !data.rolls.every(value => Number.isInteger(value) && value >= 1 && value <= 4) ||
+                !['reality', 'anomaly'].includes(data.rollType) || !Number.isInteger(data.burnout) ||
+                data.burnout < 0 || data.burnout > 6) return null;
+
+            const countOfThree = data.rolls.filter(value => value === 3).length;
+            const isThreefold = countOfThree === 3;
+            const netResult = countOfThree - data.burnout;
+            return {
+                id: data.id,
+                clientId: typeof data.clientId === 'string' && data.clientId.length <= 100 ? data.clientId : null,
+                sender: data.sender.trim(),
+                rolls: data.rolls,
+                rollType: data.rollType,
+                countOfThree,
+                burnout: data.burnout,
+                netResult,
+                isThreefold,
+                isSuccess: isThreefold || netResult >= 1,
+                isSecret: data.isSecret === true,
+                timestamp: typeof data.timestamp === 'string' ? data.timestamp.slice(0, 30) : ''
+            };
+        }
 
         function toggleTheme() {
             const body = document.getElementById('main-body');
@@ -193,7 +266,13 @@
         function syncHistoryFromStorage() {
             const savedHistory = localStorage.getItem(STORAGE_KEY);
             if (savedHistory) {
-                try { activeHistory = JSON.parse(savedHistory); } catch(e) { activeHistory = []; }
+                try {
+                    const clearBefore = Number(localStorage.getItem(CLEAR_BEFORE_KEY)) || 0;
+                    const parsed = JSON.parse(savedHistory);
+                    activeHistory = Array.isArray(parsed)
+                        ? parsed.map(normalizeRoll).filter(roll => roll && getRollTime(roll) >= clearBefore).slice(0, MAX_HISTORY)
+                        : [];
+                } catch(e) { activeHistory = []; }
             } else {
                 activeHistory = [];
             }
@@ -205,7 +284,7 @@
             if (savedTheme === 'dark') { toggleTheme(); }
             const savedName = localStorage.getItem('agency_nick');
             if (savedName && savedName.trim() !== "") {
-                myName = savedName.trim();
+                myName = savedName.trim().slice(0, MAX_NAME_LENGTH);
                 document.getElementById('username').value = myName;
             }
             syncHistoryFromStorage();
@@ -220,7 +299,9 @@
         };
 
         function saveName() {
-            const nameInput = document.getElementById('username').value.trim();
+            const input = document.getElementById('username');
+            const nameInput = input.value.trim().slice(0, MAX_NAME_LENGTH);
+            input.value = nameInput;
             myName = nameInput || "未命名特工";
             localStorage.setItem('agency_nick', myName);
             renderAllLogs();
@@ -228,6 +309,7 @@
 
         function initSupabaseSync() {
             try {
+                if (!window.supabase) throw new Error('Supabase SDK 未加载');
                 supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 fetchRecentHistory();
                 supabaseClient
@@ -238,15 +320,20 @@
                         }
                     })
                     .subscribe((status) => {
-                        const statusTag = document.getElementById('status-tag');
                         if (status === 'SUBSCRIBED') {
-                            statusTag.innerText = "ONLINE // 中枢已同步";
-                            statusTag.className = "text-xs px-2 py-1 bg-green-500/10 text-green-600 border border-green-500/30 rounded font-bold uppercase";
-                            appendSystemLog("安全接入 Supabase 广播管道，多端同步已就绪。");
+                            realtimeSubscribed = true;
+                            realtimeFailed = false;
+                            refreshSyncStatus();
+                        } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+                            realtimeSubscribed = false;
+                            realtimeFailed = true;
+                            refreshSyncStatus();
+                            appendSystemLog(`Supabase 实时连接异常：${status}`);
                         }
                     });
             } catch (e) {
                 console.error(e);
+                setSyncStatus('error', 'SYNC ERROR // 网关不可用');
                 appendSystemLog("Supabase 网关初始化失败，请检查配置凭证。");
             }
         }
@@ -257,14 +344,16 @@
                 const { data, error } = await supabaseClient
                     .from('agency_rolls')
                     .select('payload')
-                    .limit(40);
-                if (error) return;
+                    .order('created_at', { ascending: false })
+                    .limit(MAX_HISTORY);
+                if (error) throw error;
                 
                 if (data && data.length > 0) {
                     let hasNew = false;
+                    const clearBefore = Number(localStorage.getItem(CLEAR_BEFORE_KEY)) || 0;
                     data.forEach(row => {
-                        const roll = row.payload;
-                        if (roll && !activeHistory.some(item => item.id === roll.id)) {
+                        const roll = normalizeRoll(row.payload);
+                        if (roll && !roll.isSecret && getRollTime(roll) >= clearBefore && !activeHistory.some(item => item.id === roll.id)) {
                             activeHistory.push(roll);
                             hasNew = true;
                         }
@@ -275,24 +364,41 @@
                             const timeB = parseInt(b.id.split('_')[1]) || 0;
                             return timeB - timeA;
                         });
-                        if (activeHistory.length > 40) activeHistory = activeHistory.slice(0, 40);
+                        if (activeHistory.length > MAX_HISTORY) activeHistory = activeHistory.slice(0, MAX_HISTORY);
                         localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
                         renderAllLogs();
                     }
                 }
-            } catch (err) {}
+                historyLoaded = true;
+                historyFailed = false;
+                refreshSyncStatus();
+            } catch (err) {
+                console.error('历史读取失败:', err);
+                historyFailed = true;
+                refreshSyncStatus();
+                appendSystemLog('无法读取云端历史记录；新的掷骰仍会尝试同步。');
+            }
         }
 
         async function broadcastRoll(rollData) {
             if (!supabaseClient) return;
-            const { error } = await supabaseClient
-                .from('agency_rolls')
-                .insert([{ id: rollData.id, payload: rollData }]);
-            if (error) console.error("广播失败:", error);
+            try {
+                const { error } = await supabaseClient
+                    .from('agency_rolls')
+                    .insert([{ id: rollData.id, payload: rollData }]);
+                if (error) throw error;
+                refreshSyncStatus();
+            } catch (error) {
+                console.error("广播失败:", error);
+                setSyncStatus('error', 'SYNC ERROR // 本次未同步');
+                appendSystemLog('本次掷骰仅保存在本地，未能同步给其他玩家。');
+            }
         }
 
         function rollAgencyDice() {
-            const burnout = parseInt(document.getElementById('burnout-value').value) || 0;
+            const burnoutInput = Number(document.getElementById('burnout-value').value);
+            const burnout = Number.isInteger(burnoutInput) ? Math.min(6, Math.max(0, burnoutInput)) : 0;
+            document.getElementById('burnout-value').value = burnout;
             const rollType = document.querySelector('input[name="roll-type"]:checked').value;
             const rolls = [];
             let countOfThree = 0;
@@ -325,15 +431,19 @@
         }
 
         function handleIncomingRoll(data) {
-            if (data.isSecret) return;
-            pushToLocalHistory(data);
+            const roll = normalizeRoll(data);
+            const clearBefore = Number(localStorage.getItem(CLEAR_BEFORE_KEY)) || 0;
+            if (!roll || roll.isSecret || getRollTime(roll) < clearBefore) return;
+            pushToLocalHistory(roll);
         }
 
         function pushToLocalHistory(data) {
+            const roll = normalizeRoll(data);
+            if (!roll) return;
             syncHistoryFromStorage();
-            if (!activeHistory.some(item => item.id === data.id)) {
-                activeHistory.unshift(data);
-                if (activeHistory.length > 40) activeHistory.pop();
+            if (!activeHistory.some(item => item.id === roll.id)) {
+                activeHistory.unshift(roll);
+                if (activeHistory.length > MAX_HISTORY) activeHistory.pop();
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(activeHistory));
                 renderAllLogs();
             }
@@ -349,7 +459,7 @@
             }
             container.innerHTML = '';
             activeHistory.forEach(data => {
-                const isSelf = data.clientId ? (data.clientId === myClientId) : (data.sender === myName);
+                const isSelf = data.clientId === myClientId;
                 const element = createRollElement(data, isSelf);
                 container.appendChild(element); 
             });
@@ -388,7 +498,7 @@
             }
             div.innerHTML = `
                 <div class="flex justify-between items-center text-xs text-neutral-500">
-                    <span class="font-black flex items-center gap-2 uppercase text-neutral-800 dark:text-neutral-300 tracking-wider">${data.sender} ${tag}</span>
+                    <span class="font-black flex items-center gap-2 uppercase text-neutral-800 dark:text-neutral-300 tracking-wider">${escapeHtml(data.sender)} ${tag}</span>
                     <span class="font-bold ${labelColor}">${labelText}</span>
                 </div>
                 ${diceHtml}
@@ -413,6 +523,7 @@
 
         function clearAllLogs() {
             activeHistory = [];
+            localStorage.setItem(CLEAR_BEFORE_KEY, String(Date.now()));
             localStorage.removeItem(STORAGE_KEY);
             renderAllLogs();
             appendSystemLog("本地历史记录已全部清空，终端格式化完成。");
